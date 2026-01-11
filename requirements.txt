@@ -1,0 +1,46 @@
+# Core dependencies for AWQ + Marlin Demo
+# Python 3.8+ required
+
+# Deep Learning Framework
+torch>=2.0.0
+transformers>=4.35.0
+accelerate>=0.24.0
+
+# Quantization
+# Note: AutoAWQ is deprecated but still functional
+# Uncomment if you want to use it:
+# autoawq>=0.1.6
+
+# Alternative: Use vLLM's implementation
+# vllm>=0.2.0
+
+# Dataset and utilities
+datasets>=2.14.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
+
+# GPU Monitoring and Profiling
+py3nvml>=0.2.7
+nvidia-ml-py3>=7.352.0
+gpustat>=1.1
+
+# Low-level CUDA access (optional, for advanced profiling)
+# pycuda>=2022.2  # Uncomment if you want CUDA introspection
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+plotly>=5.17.0
+rich>=13.0.0
+
+# Performance benchmarking
+numpy>=1.24.0
+pandas>=2.0.0
+tqdm>=4.65.0
+
+# Code utilities
+colorama>=0.4.6
+
+# Optional: Jupyter for interactive demos
+# jupyter>=1.0.0
+# ipywidgets>=8.0.0
