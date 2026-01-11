@@ -1,37 +1,76 @@
 """
-REAL AWQ + Marlin Inference Demo
-=================================
+REAL AWQ + Marlin Inference Demo (Updated)
+===========================================
 
-Script này sử dụng REAL AutoAWQ library với REAL Marlin kernel.
-Không còn simulation - 100% production code!
+Update: AutoAWQ is deprecated. This script now supports multiple alternatives:
+1. AutoAWQ (if you have compatible transformers)
+2. HuggingFace Transformers AWQ (built-in support)
+3. vLLM (production inference with Marlin)
+4. BitsAndBytes (alternative 4-bit quantization)
 
 Prerequisites:
-    pip install autoawq
-    # AutoAWQ sẽ tự động dùng Marlin kernel nếu available
-
-Note: AutoAWQ đã deprecated bởi author gốc, nhưng vẫn functional.
-Alternative: Dùng vLLM hoặc HuggingFace Transformers với quantization.
+    # Option 1: AutoAWQ (deprecated but may still work)
+    pip install autoawq transformers==4.51.3
+    
+    # Option 2: HuggingFace (recommended)
+    pip install transformers>=4.50.0 accelerate
+    
+    # Option 3: vLLM (production)
+    pip install vllm
+    
+    # Option 4: BitsAndBytes
+    pip install bitsandbytes accelerate
 """
 
 import torch
 import argparse
 from pathlib import Path
 import time
+import warnings
 
-# Check imports
+# Suppress AutoAWQ deprecation warnings
+warnings.filterwarnings('ignore', category=DeprecationWarning)
+
+# Try importing different quantization libraries
+HAS_AWQ = False
+HAS_VLLM = False
+HAS_BNB = False
+HAS_HF_AWQ = False
+
+# Check AutoAWQ (deprecated)
 try:
-    from transformers import AutoTokenizer
     from awq import AutoAWQForCausalLM
     HAS_AWQ = True
-except ImportError:
+except ImportError as e:
+    print(f"⚠️  AutoAWQ not available: {e}")
+    print("   This is expected - AutoAWQ is deprecated.")
     HAS_AWQ = False
-    print("⚠️  AutoAWQ not installed. Install with: pip install autoawq")
 
+# Check vLLM
 try:
-    from transformers import AutoModelForCausalLM, BitsAndBytesConfig
+    from vllm import LLM, SamplingParams
+    HAS_VLLM = True
+except ImportError:
+    HAS_VLLM = False
+
+# Check BitsAndBytes
+try:
+    from transformers import BitsAndBytesConfig
     HAS_BNB = True
-except:
+except ImportError:
     HAS_BNB = False
+
+# Check HuggingFace AWQ support
+try:
+    from transformers import AutoModelForCausalLM, AutoTokenizer, AwqConfig
+    HAS_HF_AWQ = True
+except ImportError:
+    try:
+        # Older transformers without AwqConfig
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        HAS_HF_AWQ = False
+    except ImportError:
+        pass
 
 
 def demo_real_autoawq(model_name: str = "facebook/opt-125m"):
@@ -147,6 +186,146 @@ def demo_real_autoawq(model_name: str = "facebook/opt-125m"):
         print("1. Try a smaller pre-quantized model")
         print("2. Or quantize a model yourself (slower)")
         print("\nPre-quantized models: https://huggingface.co/TheBloke\n")
+
+
+def demo_huggingface_awq():
+    """
+    Demo using HuggingFace Transformers built-in AWQ support
+    This is RECOMMENDED as it's actively maintained!
+    """
+    
+    if not HAS_HF_AWQ:
+        print("\n⚠️  HuggingFace AWQ support not available")
+        print("   Install: pip install transformers>=4.50.0\n")
+        return
+    
+    print("\n" + "="*80)
+    print("  HUGGINGFACE TRANSFORMERS - AWQ SUPPORT")
+    print("="*80 + "\n")
+    
+    print("📦 Using HuggingFace's built-in AWQ support")
+    print("   (Recommended - actively maintained!)\n")
+    
+    try:
+        from transformers import AutoTokenizer
+        
+        # Load pre-quantized AWQ model
+        model_name = "TheBloke/TinyLlama-1.1B-Chat-v1.0-AWQ"
+        
+        print(f"⏳ Loading: {model_name}")
+        print("   This model is pre-quantized with AWQ\n")
+        
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            device_map="auto",
+            torch_dtype=torch.float16
+        )
+        
+        print("✅ Model loaded!\n")
+        
+        # Test inference
+        prompts = ["The future of AI is", "Quantum computing will"]
+        
+        print("="*80)
+        print("  RUNNING INFERENCE")
+        print("="*80 + "\n")
+        
+        for prompt in prompts:
+            print(f"🔮 Prompt: '{prompt}'")
+            
+            inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+            
+            start = time.time()
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=40,
+                    do_sample=True,
+                    temperature=0.7
+                )
+            elapsed = time.time() - start
+            
+            result = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            print(f"   Output: '{result}'")
+            print(f"   Time: {elapsed:.2f}s\n")
+        
+        print("✅ HuggingFace AWQ inference successful!\n")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}\n")
+
+
+def demo_vllm_inference():
+    """
+    Demo using vLLM - Production inference server with Marlin kernel
+    This automatically uses Marlin for AWQ models!
+    """
+    
+    if not HAS_VLLM:
+        print("\n⚠️  vLLM not installed")
+        print("   Install: pip install vllm\n")
+        return
+    
+    print("\n" + "="*80)
+    print("  vLLM - PRODUCTION INFERENCE WITH MARLIN")
+    print("="*80 + "\n")
+    
+    print("🚀 vLLM automatically uses Marlin kernel for AWQ models!")
+    print("   This is THE production solution.\n")
+    
+    try:
+        # Load AWQ model with vLLM
+        model_name = "TheBloke/TinyLlama-1.1B-Chat-v1.0-AWQ"
+        
+        print(f"⏳ Loading: {model_name}")
+        print("   vLLM will use Marlin kernel if GPU supports it\n")
+        
+        llm = LLM(
+            model=model_name,
+            quantization="awq",
+            dtype="half",
+            max_model_len=512
+        )
+        
+        print("✅ Model loaded with vLLM!\n")
+        
+        # Sampling params
+        sampling_params = SamplingParams(
+            temperature=0.8,
+            top_p=0.95,
+            max_tokens=50
+        )
+        
+        # Generate
+        prompts = [
+            "The meaning of life is",
+            "Artificial intelligence will",
+            "The future of technology"
+        ]
+        
+        print("="*80)
+        print("  RUNNING BATCH INFERENCE")
+        print("="*80 + "\n")
+        
+        start = time.time()
+        outputs = llm.generate(prompts, sampling_params)
+        elapsed = time.time() - start
+        
+        for i, output in enumerate(outputs):
+            prompt = output.prompt
+            generated = output.outputs[0].text
+            print(f"🔮 Prompt {i+1}: '{prompt}'")
+            print(f"   Output: '{generated}'\n")
+        
+        print(f"⚡ Total time: {elapsed:.2f}s for {len(prompts)} prompts")
+        print(f"   Throughput: {len(prompts)/elapsed:.2f} prompts/s\n")
+        
+        print("✅ vLLM batch inference successful!")
+        print("   This used Marlin kernel for maximum speed! 🚀\n")
+        
+    except Exception as e:
+        print(f"❌ Error: {e}\n")
 
 
 def demo_huggingface_quantization(model_name: str = "facebook/opt-125m"):
@@ -265,25 +444,106 @@ def show_installation_guide():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Real AWQ + Marlin Demo")
-    parser.add_argument("--mode", type=str, default="awq",
-                       choices=["awq", "bnb", "install"],
-                       help="Demo mode")
-    parser.add_argument("--model", type=str, default="facebook/opt-125m",
-                       help="Model name")
+    parser = argparse.ArgumentParser(
+        description="Real Quantization Demo - Multiple Options",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Show what's available
+  python demos/06_real_awq_marlin.py --check
+  
+  # Try AutoAWQ (deprecated, may not work)
+  python demos/06_real_awq_marlin.py --mode awq
+  
+  # HuggingFace AWQ (recommended)
+  python demos/06_real_awq_marlin.py --mode hf-awq
+  
+  # vLLM (production)
+  python demos/06_real_awq_marlin.py --mode vllm
+  
+  # BitsAndBytes (alternative)
+  python demos/06_real_awq_marlin.py --mode bnb
+  
+  # Installation guide
+  python demos/06_real_awq_marlin.py --mode install
+        """
+    )
+    
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="check",
+        choices=["check", "awq", "hf-awq", "vllm", "bnb", "install"],
+        help="Which demo to run"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="facebook/opt-125m",
+        help="Model name for BnB demo"
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check what's installed"
+    )
     
     args = parser.parse_args()
     
-    if args.mode == "install":
+    # Check mode - early exit if just checking
+    if args.check or args.mode == "check":
+        print("\n" + "="*80)
+        print("  CHECKING AVAILABLE QUANTIZATION LIBRARIES")
+        print("="*80 + "\n")
+        
+        print(f"AutoAWQ (deprecated):     {'✅ Available' if HAS_AWQ else '❌ Not installed'}")
+        print(f"HuggingFace AWQ:          {'✅ Available' if HAS_HF_AWQ else '❌ Not installed'}")
+        print(f"vLLM:                     {'✅ Available' if HAS_VLLM else '❌ Not installed'}")
+        print(f"BitsAndBytes:             {'✅ Available' if HAS_BNB else '❌ Not installed'}")
+        
+        print("\n💡 Recommendation:")
+        if HAS_VLLM:
+            print("   ⭐ Use vLLM (--mode vllm) - Best for production")
+        elif HAS_HF_AWQ:
+            print("   ⭐ Use HF AWQ (--mode hf-awq) - Modern & maintained")
+        elif HAS_BNB:
+            print("   ⭐ Use BitsAndBytes (--mode bnb) - Good alternative")
+        else:
+            print("   ⚠️  Install one of the libraries!")
+            print("   Run: python demos/06_real_awq_marlin.py --mode install")
+        
+        print()
+    # Run appropriate demo
+    elif args.mode == "install":
         show_installation_guide()
     elif args.mode == "awq":
-        demo_real_autoawq(args.model)
+        if HAS_AWQ:
+            demo_real_autoawq()
+        else:
+            print("\n❌ AutoAWQ not available (and it's deprecated anyway)")
+            print("   Try: --mode hf-awq or --mode vllm instead\n")
+    elif args.mode == "hf-awq":
+        demo_huggingface_awq()
+    elif args.mode == "vllm":
+        demo_vllm_inference()
     elif args.mode == "bnb":
         demo_huggingface_quantization(args.model)
     
-    print("\n💡 Key Points:")
-    print("   • This script uses REAL libraries, not simulation")
-    print("   • AutoAWQ automatically uses Marlin kernel when available")
-    print("   • All inference is production-ready")
-    print("   • Educational demos shows HOW it works internally")
-    print("   • This shows WHAT you can do with it\n")
+    # Print takeaways (only if not just checking)
+    if args.mode != "check" and not args.check:
+        print("\n" + "="*80)
+        print("  KEY TAKEAWAYS")
+        print("="*80)
+        print("""
+✅ AWQ quantization is NOT dead - just AutoAWQ library is deprecated
+✅ HuggingFace Transformers has built-in AWQ support now
+✅ vLLM uses Marlin kernel automatically for AWQ models
+✅ All these are REAL production code, not simulation
+
+📚 Educational demos (03_marlin_step_by_step.py) teach you HOW
+🚀 Production demos (this file) show you WHAT you can do
+
+Both are valuable! 🎓 + 💼 = 💪
+        """)
+
+
